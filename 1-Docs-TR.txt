@@ -1,0 +1,277 @@
+# Windows Server Uzak Masaüstü Hizmetleri (RDS) – 120 Günlük Lisanslama Süresi ve Yönetimi
+
+## Genel Bakış
+
+Microsoft Windows Server işletim sistemlerinde bulunan **Uzak Masaüstü Hizmetleri (Remote Desktop Services – RDS)**, birden fazla kullanıcının sunucu üzerinde barındırılan masaüstü ortamlarına ve uygulamalara uzaktan erişmesini sağlayan bir teknolojidir.
+
+RDS ortamının sürekli ve yasal olarak kullanılabilmesi için uygun **Uzak Masaüstü Hizmetleri İstemci Erişim Lisanslarının (RDS CAL)** bulunması gerekir.
+
+Bununla birlikte Microsoft, Uzak Masaüstü Oturum Ana Bilgisayarı (RD Session Host) rolünün kurulumundan itibaren **120 günlük bir lisanslama geçiş süresi (Grace Period)** sunar.
+
+Bu süre boyunca sistem yöneticileri, RDS lisans sunucusu ve CAL yapılandırmasını tamamlamadan RDS altyapısını kurabilir, yapılandırabilir ve test edebilir.
+
+Bu dokümanda 120 günlük RDS lisanslama süresinin çalışma prensibi, PowerShell ile kalan sürenin kontrol edilmesi, Windows Registry üzerindeki ilgili yapılandırma ve lisanslama sorunlarının giderilmesi ele alınmaktadır.
+
+---
+
+## 1. RDS 120 Günlük Lisanslama Süresi Nedir?
+
+Windows Server üzerinde RD Session Host rolü etkinleştirildiğinde sistem, ilk kurulum için 120 günlük bir geçiş süresi sağlar.
+
+Bu süre, kuruluşların RDS ortamını devreye almadan önce gerekli teknik kontrolleri ve lisanslama hazırlıklarını tamamlamasına olanak tanır.
+
+120 günlük geçiş süresi boyunca sistem yöneticileri aşağıdaki işlemleri gerçekleştirebilir:
+
+- RDS rollerini kurabilir ve yapılandırabilir.
+- Kullanıcıların uzak masaüstü bağlantılarını test edebilir.
+- Kimlik doğrulama ve oturum yönetimi işlemlerini kontrol edebilir.
+- Uygulamaların çok kullanıcılı çalışma uyumluluğunu değerlendirebilir.
+- Sunucu performansını ve kaynak kullanımını inceleyebilir.
+- RDS lisans sunucusunun kurulumunu planlayabilir.
+- Gerekli CAL lisanslarının temin edilmesini sağlayabilir.
+
+**Önemli:** 120 günlük sürenin sona ermesiyle birlikte, uygun şekilde lisanslandırılmamış RD Session Host sunucularında normal kullanıcı bağlantıları engellenebilir.
+
+Bu nedenle gerekli lisanslama işlemleri, geçiş süresi dolmadan tamamlanmalıdır.
+
+## 2. Lisanslama ve Güvenlik Konusunda Dikkat Edilmesi Gerekenler
+
+RDS lisanslama yapısında herhangi bir değişiklik yapılmadan önce aşağıdaki hususlar dikkate alınmalıdır:
+
+- 120 günlük süre, RDS altyapısının ilk kurulumu ve yapılandırılması için tasarlanmıştır.
+- Lisanslama mekanizmasına ait kayıt defteri verilerinin değiştirilmesi, geçerli bir lisanslama yönteminin yerine geçmez.
+- Canlı ortamlarda gerekli RDS CAL lisanslarının bulunması zorunludur.
+- Windows Registry üzerinde yapılan hatalı değişiklikler hizmet kesintilerine ve sistem kararsızlığına yol açabilir.
+- Lisanslama yapılandırmaları yalnızca yetkili sistem yöneticileri tarafından gerçekleştirilmelidir.
+
+**Öneri:** Test işlemleri için üretim ortamından bağımsız bir laboratuvar altyapısı kullanılması, canlı sistemlerde ise Microsoft'un desteklediği lisanslama yöntemlerinin uygulanması tavsiye edilir.
+
+## 3. PowerShell ile Kalan RDS Lisanslama Süresini Kontrol Etme
+
+Windows Server, RDS lisanslama süresinin takip edilebilmesi için WMI ve CIM altyapısı üzerinden sorgulama yapılmasına olanak tanır.
+
+PowerShell kullanılarak kalan geçiş süresi kolayca öğrenilebilir.
+
+### PowerShell Komutu
+
+```powershell
+$RdsSettings = Get-CimInstance `
+    -Namespace "root/CIMV2/TerminalServices" `
+    -ClassName "Win32_TerminalServiceSetting"
+
+$GracePeriod = Invoke-CimMethod `
+    -InputObject $RdsSettings `
+    -MethodName "GetGracePeriodDays"
+
+Write-Host "Kalan RDS Lisanslama Suresi: $($GracePeriod.DaysLeft) gun"
+```
+
+### Komutun Çalışma Mantığı
+
+**1. Get-CimInstance**
+
+Windows Server üzerindeki RDS yapılandırma bilgilerini sorgular.
+
+**2. Win32_TerminalServiceSetting**
+
+Uzak Masaüstü Hizmetleri ile ilişkili ayarların bulunduğu CIM sınıfıdır.
+
+**3. Invoke-CimMethod**
+
+Belirtilen CIM sınıfına ait `GetGracePeriodDays` metodunu çalıştırır.
+
+**4. DaysLeft**
+
+RDS geçiş süresinin sona ermesine kaç gün kaldığını gösterir.
+
+### Örnek Çıktı
+
+```text
+Kalan RDS Lisanslama Suresi: 85 gun
+```
+
+Bu değer, sunucunun mevcut lisanslama durumuna göre değişiklik gösterebilir.
+
+## 4. Windows Registry Üzerindeki RDS Grace Period Yapısı
+
+Windows Server, RDS lisanslama geçiş süresine ilişkin bazı bilgileri Windows Kayıt Defteri (Registry) üzerinde saklar.
+
+İlgili kayıt defteri yolu:
+
+```text
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\RCM\GracePeriod
+```
+
+Bu konum içerisinde genellikle aşağıdaki ifadeyle başlayan bir ikili kayıt (REG_BINARY) bulunur:
+
+```text
+L$RTMTIMEBOMB
+```
+
+Söz konusu kayıt, RDS geçiş süresinin takip edilmesinde kullanılan dahili mekanizmayla ilişkilidir.
+
+### Registry Güvenlik İzinleri
+
+`GracePeriod` kayıt anahtarı, Windows tarafından özel erişim izinleriyle korunmaktadır.
+
+Bu güvenlik mekanizmasının temel amaçları şunlardır:
+
+- Lisanslama bilgilerinin bütünlüğünü korumak.
+- Yetkisiz değişiklikleri engellemek.
+- RDS lisanslama mekanizmasının tutarlı çalışmasını sağlamak.
+- Sistem güvenliğini ve yapılandırma bütünlüğünü korumak.
+
+Kayıt defterindeki ilgili anahtarın sahipliğinin değiştirilmesi, erişim izinlerinin düzenlenmesi veya lisanslama verilerinin silinmesi, RDS hizmetlerinin beklenmedik şekilde çalışmasına neden olabilir.
+
+Bu nedenle geçiş süresini yeniden başlatmak amacıyla korumalı lisanslama kayıtlarının silinmesi, desteklenen bir lisanslama çözümü olarak değerlendirilmemelidir.
+
+## 5. RD Licensing Diagnoser ile Lisanslama Durumunu Kontrol Etme
+
+Windows Server, RDS lisanslama sorunlarını tespit etmek amacıyla **RD Licensing Diagnoser** adlı yerleşik bir tanılama aracı sunar.
+
+Bu araç sayesinde mevcut lisanslama yapılandırması kontrol edilebilir ve olası sorunlar tespit edilebilir.
+
+### Kontrol Adımları
+
+1. **Server Manager (Sunucu Yöneticisi)** uygulamasını açın.
+2. Üst menüden **Tools (Araçlar)** bölümüne gidin.
+3. **Remote Desktop Services** seçeneğini açın.
+4. **RD Licensing Diagnoser** aracını çalıştırın.
+5. Görüntülenen lisanslama bilgilerini ve uyarıları inceleyin.
+
+### Kontrol Edilebilecek Durumlar
+
+- RDS lisans sunucusunun tanımlı olup olmadığı.
+- Lisans sunucusuna erişim sağlanıp sağlanamadığı.
+- Lisanslama modunun doğru yapılandırılıp yapılandırılmadığı.
+- RDS CAL lisanslarıyla ilgili yapılandırma sorunları.
+- RD Session Host üzerinde bildirilen lisanslama hataları.
+
+Bu araç, lisanslama kaynaklı bağlantı problemlerinin tespit edilmesinde önemli kolaylık sağlar.
+
+## 6. RDS Lisanslama Yapılandırmasının Doğru Şekilde Yapılması
+
+RDS altyapısının kesintisiz ve uygun şekilde çalışması için lisanslama yapılandırmasının tamamlanması gerekir.
+
+### Önerilen Yapılandırma Adımları
+
+**Adım 1 – RDS Licensing Rolünün Kurulması**
+
+Server Manager üzerinden Remote Desktop Licensing rol hizmetini ilgili sunucuya yükleyin.
+
+**Adım 2 – Lisans Sunucusunun Etkinleştirilmesi**
+
+Remote Desktop Licensing Manager aracılığıyla lisans sunucusunu etkinleştirin.
+
+**Adım 3 – RDS CAL Lisanslarının Yüklenmesi**
+
+Kuruluşun ihtiyaçlarına uygun RDS istemci erişim lisanslarını yükleyin.
+
+**Adım 4 – Lisanslama Modunun Belirlenmesi**
+
+İhtiyaca göre aşağıdaki lisanslama yöntemlerinden biri seçilmelidir:
+
+- **Per User:** Kullanıcı başına lisanslama.
+- **Per Device:** Cihaz başına lisanslama.
+
+**Adım 5 – Lisans Sunucusunun Tanımlanması**
+
+RD Session Host sunucusunun, gerekli lisansları alabileceği lisans sunucusuna yönlendirilmesini sağlayın.
+
+**Adım 6 – Yapılandırmanın Doğrulanması**
+
+RD Licensing Diagnoser aracılığıyla lisanslama durumunu kontrol edin.
+
+**Adım 7 – Kullanıcı Bağlantılarının Test Edilmesi**
+
+Test kullanıcıları ile uzak masaüstü bağlantıları gerçekleştirerek yapılandırmanın doğru çalıştığını doğrulayın.
+
+## 7. İlgili Windows Server Sürümleri
+
+Bu dokümanda açıklanan 120 günlük RDS lisanslama geçiş süresi, aşağıdaki Windows Server sürümleri için geçerlidir.
+
+| İşletim Sistemi | Geçiş Süresi |
+|---|---|
+| Windows Server 2012 | 120 gün |
+| Windows Server 2012 R2 | 120 gün |
+| Windows Server 2016 | 120 gün |
+| Windows Server 2019 | 120 gün |
+| Windows Server 2022 | 120 gün |
+
+**Not:** Windows Server sürümlerinin destek yaşam döngüleri, lisans uyumlulukları ve kullanılabilir yönetim araçları farklılık gösterebilir.
+
+## 8. RDS Bağlantı ve Lisanslama Sorunlarının Giderilmesi
+
+Kullanıcıların uzak masaüstü bağlantısı oluşturamaması durumunda, sorunun yalnızca lisanslamadan kaynaklandığı varsayılmamalıdır.
+
+Aşağıdaki kontroller sırasıyla gerçekleştirilebilir.
+
+### 8.1. RDS Rollerinin Kontrol Edilmesi
+
+RD Session Host ve ihtiyaç duyulan diğer RDS rol hizmetlerinin doğru şekilde yüklendiğinden emin olun.
+
+### 8.2. Lisanslama Yapılandırmasının İncelenmesi
+
+RD Session Host üzerinde tanımlanan lisans sunucusunu ve lisanslama modunu doğrulayın.
+
+### 8.3. RD Licensing Diagnoser Kontrolü
+
+Lisanslama tanılama aracında görüntülenen hata ve uyarıları inceleyin.
+
+### 8.4. Event Viewer Kayıtlarının İncelenmesi
+
+Windows Event Viewer üzerinden Remote Desktop Services ve Terminal Services ile ilişkili olay kayıtlarını kontrol edin.
+
+### 8.5. Ağ Bağlantısının Test Edilmesi
+
+RD Session Host ile RDS lisans sunucusu arasındaki ağ iletişiminin sağlıklı çalıştığını doğrulayın.
+
+### 8.6. Group Policy Ayarlarının Kontrol Edilmesi
+
+Etki alanı veya yerel grup ilkeleri üzerinden uygulanan RDS lisanslama ayarlarını inceleyin.
+
+### 8.7. Sorunun Desteklenen Yöntemlerle Giderilmesi
+
+Tespit edilen soruna göre lisans sunucusunu yapılandırın, eksik lisansları yükleyin veya yanlış yapılandırılmış ayarları düzeltin.
+
+## 9. Sistem Yöneticileri İçin En İyi Uygulamalar
+
+Kurumsal ortamlarda RDS altyapısının sağlıklı yönetilmesi için aşağıdaki uygulamalar önerilir:
+
+- RDS geçiş süresi düzenli olarak kontrol edilmelidir.
+- Lisanslama işlemleri 120 günlük süre dolmadan tamamlanmalıdır.
+- Kullanılan RDS CAL lisansları kayıt altına alınmalıdır.
+- Lisans sunucusu ve lisanslama modu yapılandırmaları dokümante edilmelidir.
+- Event Viewer kayıtları düzenli olarak takip edilmelidir.
+- Sistem yedekleri planlı şekilde alınmalıdır.
+- Canlı ortamlarda desteklenmeyen Registry değişikliklerinden kaçınılmalıdır.
+- RDS altyapısında gerçekleştirilen önemli yapılandırma değişiklikleri kayıt altına alınmalıdır.
+
+## 10. Sonuç
+
+Windows Server üzerinde sunulan 120 günlük RDS lisanslama geçiş süresi, sistem yöneticilerine Uzak Masaüstü Hizmetleri altyapısını hazırlamak, test etmek ve lisanslama işlemlerini tamamlamak için geçici bir çalışma ortamı sağlar.
+
+PowerShell ve Windows Server'ın yerleşik tanılama araçları sayesinde bu sürenin takip edilmesi ve lisanslama kaynaklı sorunların tespit edilmesi mümkündür.
+
+Ancak kurumsal ve canlı ortamlarda RDS hizmetlerinin uzun vadeli, kararlı ve uygun şekilde çalışabilmesi için gerekli RDS CAL lisanslarının temin edilmesi ve lisans sunucusu yapılandırmasının doğru şekilde tamamlanması gerekir.
+
+---
+
+## Yasal Uyarı
+
+Bu doküman; eğitim, sistem yönetimi, teknik inceleme, sorun giderme ve yetkilendirilmiş laboratuvar testleri amacıyla hazırlanmıştır.
+
+Burada paylaşılan bilgiler, Microsoft'un lisanslama gereksinimlerinin yerine geçmez.
+
+RDS altyapısını yöneten sistem yöneticileri ve kuruluşlar, kullanılan ürünlerin geçerli lisanslama koşullarına uygunluğundan sorumludur.
+
+## Geliştirici ve Dokümantasyon
+
+**Veli Kadir Kozan**
+
+- **GitHub:** https://github.com/velikadirkozan
+- **E-posta:** kadir@kadirkozan.com
+
+## Lisans
+
+Bu doküman, depo sahibi tarafından belirlenecek uygun bir açık kaynak dokümantasyon lisansı kapsamında yayımlanabilir.

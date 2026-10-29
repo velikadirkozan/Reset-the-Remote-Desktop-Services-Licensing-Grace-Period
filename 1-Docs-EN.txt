@@ -1,0 +1,231 @@
+# Windows Server RDS Licensing Grace Period – Configuration and Diagnostics
+
+## Overview
+
+Microsoft Windows Server includes Remote Desktop Services (RDS), a feature that allows multiple users to access server-hosted desktops and applications remotely.
+
+For environments operating with the Remote Desktop Session Host role, Microsoft requires appropriate Remote Desktop Services Client Access Licenses (RDS CALs). However, Windows Server provides an initial **120-day licensing grace period** following deployment of the RD Session Host role.
+
+During this period, administrators can install, configure, evaluate, and validate their Remote Desktop Services infrastructure before completing the required licensing configuration.
+
+This documentation explains how the RDS licensing grace period works, how to inspect its remaining duration, and how to troubleshoot licensing-related issues.
+
+## 1. Understanding the RDS Licensing Grace Period
+
+The licensing grace period is a temporary evaluation window designed to help organizations prepare their Remote Desktop Services deployments.
+
+During the initial 120 days, an RD Session Host can generally accept remote sessions without a configured RDS license server.
+
+This temporary period allows IT administrators to:
+
+- Deploy and configure Remote Desktop Services.
+- Validate remote desktop connectivity.
+- Test user authentication and session management.
+- Evaluate application compatibility.
+- Prepare the required RDS licensing infrastructure.
+- Verify system performance in a controlled environment.
+
+Once the grace period expires, the RD Session Host requires valid licensing configuration to continue accepting regular RDS user sessions.
+
+**Important:** The grace period does not eliminate Microsoft's licensing requirements. Organizations must obtain the appropriate licenses for their deployments.
+
+## 2. Important Licensing and Security Considerations
+
+Before making changes to an RDS deployment, administrators should understand the following considerations:
+
+- An RDS grace period is intended for initial deployment and configuration.
+- Modifying internal licensing-related registry data is not a supported alternative to properly licensing Remote Desktop Services.
+- Production environments must use appropriately licensed RDS infrastructure.
+- Registry modifications can affect service availability, system stability, and security.
+- Configuration changes should be performed only by authorized administrators.
+
+**Recommendation:** Use a dedicated testing or laboratory environment for deployment experiments. For long-term operation, configure a Remote Desktop Licensing server and install the required RDS CALs.
+
+## 3. Checking the Remaining RDS Grace Period with PowerShell
+
+Windows Server exposes licensing-related information through Windows Management Instrumentation (WMI) and Common Information Model (CIM).
+
+Administrators can retrieve the remaining grace period directly from PowerShell.
+
+### PowerShell Command
+
+```powershell
+$RdsSettings = Get-CimInstance `
+    -Namespace "root/CIMV2/TerminalServices" `
+    -ClassName "Win32_TerminalServiceSetting"
+
+$GracePeriod = Invoke-CimMethod `
+    -InputObject $RdsSettings `
+    -MethodName "GetGracePeriodDays"
+
+Write-Host "Remaining RDS Grace Period: $($GracePeriod.DaysLeft) days"
+```
+
+### How the Command Works
+
+1. `Get-CimInstance` retrieves Remote Desktop Services configuration information.
+2. The `Win32_TerminalServiceSetting` class provides access to RDS-related settings.
+3. `Invoke-CimMethod` executes the `GetGracePeriodDays` method.
+4. The `DaysLeft` property returns the remaining grace period in days.
+
+The result helps administrators plan licensing activities before the evaluation window expires.
+
+### Example Output
+
+```text
+Remaining RDS Grace Period: 85 days
+```
+
+The number displayed depends on the current licensing status and configuration of the server.
+
+## 4. Understanding the GracePeriod Registry Location
+
+Windows Server maintains internal information associated with the Remote Desktop Services licensing grace period in the Windows Registry.
+
+The relevant registry location is:
+
+```text
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\RCM\GracePeriod
+```
+
+This registry location may contain a binary value with a name beginning with:
+
+```text
+L$RTMTIMEBOMB
+```
+
+The entry is associated with the internal grace-period tracking mechanism.
+
+Windows protects this registry location using restrictive permissions to prevent unauthorized changes.
+
+### Registry Protection
+
+The `GracePeriod` registry key is protected through Windows security permissions and ownership controls.
+
+These protections help maintain the integrity of the licensing mechanism.
+
+Changing ownership, removing protected licensing values, or altering access permissions can interfere with the expected operation of Remote Desktop Services.
+
+For this reason, manually resetting the grace period by deleting licensing-related registry values is not recommended as a licensing or operational solution.
+
+## 5. Verifying Licensing Status with RD Licensing Diagnoser
+
+Windows Server provides a built-in diagnostic utility for identifying Remote Desktop Services licensing issues.
+
+To examine the licensing configuration:
+
+1. Open **Server Manager**.
+2. Navigate to **Tools**.
+3. Select **Remote Desktop Services**.
+4. Open **RD Licensing Diagnoser**.
+5. Review the displayed licensing configuration and diagnostic messages.
+
+The tool can help administrators identify:
+
+- Missing or unavailable RD Licensing servers.
+- Incorrect licensing modes.
+- RDS licensing configuration problems.
+- Issues affecting the RD Session Host's ability to obtain licenses.
+
+Diagnostic results should be reviewed before making configuration changes.
+
+## 6. Configuring RDS Licensing Correctly
+
+For a stable and properly licensed Remote Desktop Services environment, follow these general steps:
+
+1. Install the **Remote Desktop Licensing** role service on the designated Windows Server.
+2. Activate the RD Licensing server through the Remote Desktop Licensing Manager.
+3. Install the appropriate RDS Client Access Licenses.
+4. Configure the RD Session Host to use the correct licensing mode:
+   - Per User
+   - Per Device
+5. Specify the RD Licensing server through Group Policy or the supported RDS deployment configuration.
+6. Verify the configuration using RD Licensing Diagnoser.
+7. Confirm that users can establish Remote Desktop sessions successfully.
+
+The selected licensing model should reflect the organization's licensing agreements and operational requirements.
+
+## 7. Supported Windows Server Environments
+
+The concepts described in this documentation are applicable to RDS deployments on the following Windows Server versions:
+
+| Windows Server Version | RDS Grace Period |
+|---|---|
+| Windows Server 2012 | 120 days |
+| Windows Server 2012 R2 | 120 days |
+| Windows Server 2016 | 120 days |
+| Windows Server 2019 | 120 days |
+| Windows Server 2022 | 120 days |
+
+Support lifecycle status, licensing compatibility, and available administrative features may differ between versions.
+
+## 8. Troubleshooting Recommendations
+
+If users cannot establish Remote Desktop sessions, administrators should investigate the issue systematically.
+
+**Step 1 – Check the RDS role**
+
+Confirm that the required Remote Desktop Services role services are installed and functioning.
+
+**Step 2 – Review the licensing configuration**
+
+Verify whether the RD Session Host has been configured with an appropriate licensing mode and licensing server.
+
+**Step 3 – Run licensing diagnostics**
+
+Use RD Licensing Diagnoser to identify reported licensing problems.
+
+**Step 4 – Check system events**
+
+Review relevant events in Event Viewer, including Remote Desktop Services and Terminal Services logs.
+
+**Step 5 – Validate network connectivity**
+
+Confirm that the RD Session Host can communicate with the configured RD Licensing server.
+
+**Step 6 – Review Group Policy**
+
+Check for licensing-related Group Policy settings that may override local configurations.
+
+**Step 7 – Apply a supported resolution**
+
+Correct the licensing configuration, activate the licensing server, or install the required RDS CALs as appropriate.
+
+## 9. Best Practices
+
+For reliable Remote Desktop Services administration:
+
+- Monitor the remaining licensing grace period during initial deployment.
+- Complete RDS license activation and configuration before the grace period expires.
+- Keep a record of purchased and installed RDS CALs.
+- Document changes to licensing modes and license server assignments.
+- Monitor licensing-related events and diagnostic warnings.
+- Maintain regular system backups.
+- Avoid unsupported registry changes in production environments.
+
+## 10. Conclusion
+
+The 120-day Remote Desktop Services licensing grace period provides a useful opportunity to evaluate and configure RDS deployments before completing the licensing process.
+
+PowerShell and Windows Server's built-in diagnostic utilities allow administrators to monitor the remaining grace period and identify potential configuration problems.
+
+For production environments, correctly configuring the Remote Desktop Licensing role and installing the appropriate RDS CALs remains the supported and recommended approach.
+
+---
+
+## Disclaimer
+
+This documentation is intended for educational purposes, system administration, diagnostics, and authorized laboratory testing.
+
+It does not provide an alternative to Microsoft's licensing requirements. Administrators are responsible for ensuring that their Remote Desktop Services environments comply with applicable licensing agreements.
+
+## Author
+
+**Veli Kadir Kozan**
+
+- GitHub: https://github.com/velikadirkozan
+- Email: kadir@kadirkozan.com
+
+## License
+
+Documentation may be distributed under an appropriate open-source documentation license selected by the repository owner.

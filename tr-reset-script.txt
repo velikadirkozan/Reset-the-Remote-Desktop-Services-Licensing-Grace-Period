@@ -1,0 +1,48 @@
+
+# ====================================================
+# RDS Grace Period Checker
+# Developer : Veli Kadir Kozan
+# Email     : kadir@kadirkozan.com
+# GitHub    : https://github.com/velikadirkozan
+# ====================================================
+
+#Requires -RunAsAdministrator
+
+try {
+    Write-Host "`nRDS Lisanslama Kontrolu Baslatiliyor..." -ForegroundColor Cyan
+
+    $RDS = Get-CimInstance `
+        -Namespace "root/CIMV2/TerminalServices" `
+        -ClassName "Win32_TerminalServiceSetting" `
+        -ErrorAction Stop
+
+    $Result = Invoke-CimMethod `
+        -InputObject $RDS `
+        -MethodName "GetGracePeriodDays" `
+        -ErrorAction Stop
+
+    if ($Result.ReturnValue -ne 0) {
+        throw "RDS sorgusu basarisiz. Kod: $($Result.ReturnValue)"
+    }
+
+    $Days = [int]$Result.DaysLeft
+
+    Write-Host "Sunucu       : $env:COMPUTERNAME"
+    Write-Host "Kalan Sure   : $Days gun"
+
+    if ($Days -le 0) {
+        Write-Host "UYARI: Lisanslama gecis suresi dolmus olabilir." -ForegroundColor Red
+    }
+    elseif ($Days -le 15) {
+        Write-Host "KRITIK: Lisanslama suresi bitmek uzere!" -ForegroundColor Red
+    }
+    elseif ($Days -le 30) {
+        Write-Host "UYARI: Lisanslama islemlerini tamamlayin." -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "DURUM: Gecis suresi devam ediyor." -ForegroundColor Green
+    }
+}
+catch {
+    Write-Host "HATA: $($_.Exception.Message)" -ForegroundColor Red
+}
